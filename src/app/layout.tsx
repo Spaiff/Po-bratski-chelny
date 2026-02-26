@@ -15,6 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Барбершоп По-братски | Набережные Челны",
   description: "Мы создаем простые и стильные мужские стрижки, делаем нашу работу хорошо и быстро.",
+  icons: {
+    icon: "/logo.svg",
+    apple: "/logo.svg",
+  },
 };
 
 export default function RootLayout({
