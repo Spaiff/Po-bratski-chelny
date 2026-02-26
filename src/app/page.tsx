@@ -5,7 +5,7 @@ import { ParticleHero } from "@/components/3d/ParticleHero";
 import { Button } from "@/components/ui/button";
 import { Scissors, MapPin, Phone, Clock, CalendarDays, Star, ChevronDown } from "lucide-react";
 import Link from "next/link";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Accordion,
   AccordionContent,
@@ -43,13 +43,65 @@ const reviews = [
 export default function Home() {
   const [isScrolled, setIsScrolled] = useState(false);
 
-  useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 50);
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+  // --- Gyroscope parallax refs ---
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const btnRef = useRef<HTMLDivElement>(null);
+  const gyro = useRef({ x: 0, y: 0 });
+  const smooth = useRef({ x: 0, y: 0 });
+  const rafId = useRef<number>(0);
+
+  const animateGyro = useCallback(() => {
+    const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+    smooth.current.x = lerp(smooth.current.x, gyro.current.x, 0.06);
+    smooth.current.y = lerp(smooth.current.y, gyro.current.y, 0.06);
+    const sx = smooth.current.x;
+    const sy = smooth.current.y;
+    if (titleRef.current) {
+      titleRef.current.style.transform = `translate(${sx * 18}px, ${sy * 10}px)`;
+    }
+    if (btnRef.current) {
+      btnRef.current.style.transform = `translate(${-sx * 10}px, ${-sy * 6}px)`;
+    }
+    rafId.current = requestAnimationFrame(animateGyro);
   }, []);
+
+  useEffect(() => {
+    const handleScroll = () => setIsScrolled(window.scrollY > 50);
+    window.addEventListener("scroll", handleScroll);
+
+    // Only activate on mobile
+    if (window.innerWidth >= 768) return () => window.removeEventListener("scroll", handleScroll);
+
+    const handleOrientation = (e: DeviceOrientationEvent) => {
+      if (e.gamma === null || e.beta === null) return;
+      gyro.current.x = Math.max(-1, Math.min(1, e.gamma / 45));
+      gyro.current.y = Math.max(-1, Math.min(1, (e.beta - 45) / 45));
+    };
+
+    const startGyro = () => {
+      window.addEventListener("deviceorientation", handleOrientation, true);
+      rafId.current = requestAnimationFrame(animateGyro);
+    };
+
+    if (typeof (DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }).requestPermission === "function") {
+      const onTouch = () => {
+        (DeviceOrientationEvent as unknown as { requestPermission: () => Promise<string> })
+          .requestPermission()
+          .then((p: string) => { if (p === "granted") startGyro(); })
+          .catch(console.error);
+        document.removeEventListener("touchstart", onTouch);
+      };
+      document.addEventListener("touchstart", onTouch, { once: true });
+    } else {
+      startGyro();
+    }
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("deviceorientation", handleOrientation, true);
+      cancelAnimationFrame(rafId.current);
+    };
+  }, [animateGyro]);
 
   return (
     <main className="min-h-screen relative bg-black text-white font-sans selection:bg-orange-500/30">
@@ -101,7 +153,7 @@ export default function Home() {
             <span className="text-xs font-semibold tracking-widest text-orange-400 uppercase">Набережные Челны</span>
           </div>
 
-          <h1 className="text-5xl sm:text-6xl md:text-8xl lg:text-[10rem] font-black tracking-tighter drop-shadow-2xl leading-none">
+          <h1 ref={titleRef} style={{ willChange: "transform", transition: "transform 0.05s linear" }} className="text-5xl sm:text-6xl md:text-8xl lg:text-[10rem] font-black tracking-tighter drop-shadow-2xl leading-none">
             <span className="text-transparent bg-clip-text bg-gradient-to-br from-white via-zinc-200 to-zinc-500">БАРБЕРШОП</span><br />
             <span className="whitespace-nowrap">ПО-БРАТСКИ</span>
           </h1>
@@ -110,7 +162,7 @@ export default function Home() {
             Здесь делают отличные стрижки. Быстро. Четко.<br className="hidden sm:block" /> Без лишних слов.
           </p>
 
-          <div className="pt-4 flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <div ref={btnRef} style={{ willChange: "transform", transition: "transform 0.05s linear" }} className="pt-4 flex flex-col sm:flex-row gap-4 justify-center items-center">
             <Button
               asChild
               size="lg"

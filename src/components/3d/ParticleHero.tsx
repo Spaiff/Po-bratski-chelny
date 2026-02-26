@@ -4,24 +4,9 @@ import { useRef, useMemo, useState, useEffect, Suspense } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
-type GyroState = { x: number; y: number };
-
-function LogosInstanced({
-    count = 80,
-    mobileScale = false,
-    gyroRef,
-}: {
-    count?: number;
-    mobileScale?: boolean;
-    gyroRef?: React.MutableRefObject<GyroState>;
-}) {
+function LogosInstanced({ count = 80, mobileScale = false }: { count?: number; mobileScale?: boolean }) {
     const mesh = useRef<THREE.InstancedMesh>(null);
-    const dirLightRef = useRef<THREE.DirectionalLight>(null);
-    const pointLightRef = useRef<THREE.PointLight>(null);
     const [texture, setTexture] = useState<THREE.Texture | null>(null);
-
-    // Smoothed light position (internal)
-    const smoothLight = useRef<GyroState>({ x: 10, y: 20 });
 
     useEffect(() => {
         const loader = new THREE.TextureLoader();
@@ -64,41 +49,13 @@ function LogosInstanced({
     useFrame((state) => {
         if (!texture) return;
 
-        // --- Light & parallax source: gyro on mobile, mouse on desktop ---
-        const isGyro = !!gyroRef;
-        const rawX = isGyro ? gyroRef!.current.x : state.pointer.x;
-        const rawY = isGyro ? gyroRef!.current.y : state.pointer.y;
-
-        // Smooth light position
-        const targetLightX = rawX * 20;
-        const targetLightY = rawY * 20;
-        smoothLight.current.x = THREE.MathUtils.lerp(smoothLight.current.x, targetLightX, 0.04);
-        smoothLight.current.y = THREE.MathUtils.lerp(smoothLight.current.y, targetLightY, 0.04);
-
-        if (dirLightRef.current) {
-            dirLightRef.current.position.set(smoothLight.current.x, smoothLight.current.y, 12);
-        }
-        if (pointLightRef.current) {
-            pointLightRef.current.position.set(-smoothLight.current.x * 0.5, -smoothLight.current.y * 0.5, -10);
-        }
-
-        // --- Group parallax ---
         if (group.current) {
-            group.current.rotation.x = THREE.MathUtils.lerp(
-                group.current.rotation.x,
-                (-rawY * Math.PI) / 10,
-                0.05
-            );
-            group.current.rotation.y = THREE.MathUtils.lerp(
-                group.current.rotation.y,
-                (rawX * Math.PI) / 10,
-                0.05
-            );
-            group.current.position.x = THREE.MathUtils.lerp(group.current.position.x, rawX * 2, 0.05);
-            group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, rawY * 2, 0.05);
+            group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, (state.pointer.y * Math.PI) / 10, 0.05);
+            group.current.rotation.y = THREE.MathUtils.lerp(group.current.rotation.y, (state.pointer.x * Math.PI) / 10, 0.05);
+            group.current.position.x = THREE.MathUtils.lerp(group.current.position.x, state.pointer.x * 2, 0.05);
+            group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, state.pointer.y * 2, 0.05);
         }
 
-        // --- Particle animation ---
         particles.forEach((particle, i) => {
             let { time, factor, speed, x, y, z, scale } = particle;
             time += speed;
@@ -126,8 +83,8 @@ function LogosInstanced({
     return (
         <group ref={group}>
             <ambientLight intensity={3.5} />
-            <directionalLight ref={dirLightRef} position={[10, 20, 12]} intensity={5} color="#ffffff" />
-            <pointLight ref={pointLightRef} position={[-10, -10, -10]} intensity={3} color="#f97316" />
+            <directionalLight position={[10, 20, 10]} intensity={4} color="#ffffff" />
+            <pointLight position={[-10, -10, -10]} intensity={2} color="#f97316" />
 
             <instancedMesh ref={mesh} args={[undefined, undefined, count]} position={[0, 0, 0]}>
                 <cylinderGeometry args={[0.5, 0.5, 0.15, 32]} />
@@ -143,52 +100,12 @@ export function ParticleHero() {
     const [eventSource, setEventSource] = useState<HTMLElement | null>(null);
     const [isMobile, setIsMobile] = useState(false);
 
-    // Gyroscope state (normalized -1..1, like Three.js pointer)
-    const gyroRef = useRef<GyroState>({ x: 0, y: 0 });
-    const gyroActive = useRef(false);
-
     useEffect(() => {
         setEventSource(document.body);
-
         const checkMobile = () => setIsMobile(window.innerWidth < 768);
         checkMobile();
         window.addEventListener("resize", checkMobile);
-
-        // --- DeviceOrientation (gyroscope) ---
-        const handleOrientation = (e: DeviceOrientationEvent) => {
-            if (e.gamma === null || e.beta === null) return;
-            gyroActive.current = true;
-            // gamma: left-right tilt (-90..90) → normalize to -1..1
-            // beta:  front-back tilt (0..90 typical when holding phone) → normalize & center
-            gyroRef.current.x = Math.max(-1, Math.min(1, e.gamma / 45));
-            gyroRef.current.y = Math.max(-1, Math.min(1, (e.beta - 45) / 45));
-        };
-
-        const addListener = () => {
-            window.addEventListener("deviceorientation", handleOrientation, true);
-        };
-
-        // iOS 13+ requires explicit permission via a user gesture
-        if (typeof (DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }).requestPermission === "function") {
-            // We listen for any touch to request permission
-            const requestOnTouch = () => {
-                (DeviceOrientationEvent as unknown as { requestPermission: () => Promise<string> })
-                    .requestPermission()
-                    .then((permission: string) => {
-                        if (permission === "granted") addListener();
-                    })
-                    .catch(console.error);
-                document.removeEventListener("touchstart", requestOnTouch);
-            };
-            document.addEventListener("touchstart", requestOnTouch, { once: true });
-        } else {
-            addListener();
-        }
-
-        return () => {
-            window.removeEventListener("resize", checkMobile);
-            window.removeEventListener("deviceorientation", handleOrientation, true);
-        };
+        return () => window.removeEventListener("resize", checkMobile);
     }, []);
 
     return (
@@ -202,11 +119,7 @@ export function ParticleHero() {
                 >
                     <fog attach="fog" args={["#000", isMobile ? 10 : 15, isMobile ? 55 : 45]} />
                     <Suspense fallback={null}>
-                        <LogosInstanced
-                            count={isMobile ? 40 : 78}
-                            mobileScale={isMobile}
-                            gyroRef={isMobile ? gyroRef : undefined}
-                        />
+                        <LogosInstanced count={isMobile ? 40 : 78} mobileScale={isMobile} />
                     </Suspense>
                 </Canvas>
             )}
