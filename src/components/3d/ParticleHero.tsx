@@ -4,7 +4,7 @@ import { useRef, useMemo, useState, useEffect, Suspense } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
-function LogosInstanced({ count = 80 }) {
+function LogosInstanced({ count = 80, mobileScale = false }: { count?: number; mobileScale?: boolean }) {
     const mesh = useRef<THREE.InstancedMesh>(null);
     const [texture, setTexture] = useState<THREE.Texture | null>(null);
 
@@ -38,7 +38,9 @@ function LogosInstanced({ count = 80 }) {
             const y = Math.random() * 60 - 30;
             const z = Math.random() * 60 - 30;
             // Moderate size, prominent but not overwhelming
-            const scale = 0.5 + Math.random() * 0.5;
+            const scale = mobileScale
+                ? 1.2 + Math.random() * 1.0
+                : 0.5 + Math.random() * 0.5;
 
             temp.push({ time, factor, speed, x, y, z, scale });
         }
@@ -136,24 +138,28 @@ function LogosInstanced({ count = 80 }) {
 export function ParticleHero() {
     // Use document.body as the event source so pointer tracking works even over UI elements
     const [eventSource, setEventSource] = useState<HTMLElement | null>(null);
+    const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
         setEventSource(document.body);
+        const checkMobile = () => setIsMobile(window.innerWidth < 768);
+        checkMobile();
+        window.addEventListener("resize", checkMobile);
+        return () => window.removeEventListener("resize", checkMobile);
     }, []);
 
     return (
         <div className="absolute inset-0 z-0 bg-black pointer-events-none">
             {eventSource && (
                 <Canvas
-                    camera={{ position: [0, 0, 25], fov: 60 }}
+                    camera={{ position: [0, 0, isMobile ? 18 : 25], fov: 60 }}
                     dpr={[1, 2]}
                     eventSource={eventSource}
                     eventPrefix="client"
                 >
-                    <fog attach="fog" args={["#000", 15, 45]} />
+                    <fog attach="fog" args={["#000", isMobile ? 10 : 15, isMobile ? 55 : 45]} />
                     <Suspense fallback={null}>
-                        {/* Increased count by 30% -> from 60 to ~78 */}
-                        <LogosInstanced count={78} />
+                        <LogosInstanced count={isMobile ? 40 : 78} mobileScale={isMobile} />
                     </Suspense>
                 </Canvas>
             )}
